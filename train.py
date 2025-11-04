@@ -23,7 +23,7 @@ parser.add_argument("--actor_lr", type=float, default=1e-3, help="Learning rate 
 parser.add_argument("--critic_lr", type=float, default=1e-3, help="Learning rate for Critic optimizer")
 parser.add_argument("--max_lr", type=float, default=1e-3, help="Learning rate for Q-value maximisation GD")
 parser.add_argument("--max_timesteps", type=int, default=200, help="Maximum timesteps per episode")
-parser.add_argument("--training_steps", type=int, default=int(2e6), help="Number of total training steps")
+parser.add_argument("--training_steps", type=int, default=int(1e5), help="Number of total training steps")
 parser.add_argument("--batch_size", type=int, default=64, help="Batch size for training")
 parser.add_argument("--policy_type", type=str, default="gaussian", choices=["gaussian", "uniform", "laplacian"], help="Type of policy parameterization")
 parser.add_argument("--alpha", type=float, default=0.1, help="Entropy regularization coefficient")
@@ -155,6 +155,8 @@ replay_buffer = ReplayBuffer()
 # Store the average returns along training
 average_returns = np.zeros(TRAINING_STEPS)
 
+
+
 # Define a function to calculate TD targets 
 def compute_td_target(model, rewards, next_states, dones, gamma=GAMMA):
     with torch.no_grad():
@@ -177,20 +179,20 @@ def compute_td_target(model, rewards, next_states, dones, gamma=GAMMA):
     next_actions.requires_grad = True
     next_states.requires_grad = True
     def f(action):
-        return loss_fn(action, next_states).squeeze(-1)
+        return loss_fn(next_states, action).squeeze(-1)
+    improved_next_actions = next_actions.clone()
     for _ in range(TAU):
         # TODO: Implement gradient ascent step
-        J = torch.autograd.functional.jacobian(f, next_actions)
-        action_grad = torch.stack([J[i, i] for i in range(next_actions.shape[0])], dim=0)
-        exit(0)
-        next_actions = next_actions + MAX_LR * action_grad
+        J = torch.autograd.functional.jacobian(f, improved_next_actions)
+        action_grad = torch.stack([J[i, i] for i in range(improved_next_actions.shape[0])], dim=0)
+        improved_next_actions = improved_next_actions + MAX_LR * action_grad
         # Clip actions to be within valid bounds
-        next_actions = torch.clamp(next_actions, action_low, action_high) 
+        improved_next_actions = torch.clamp(improved_next_actions, action_low, action_high) 
     # Restore model parameters
     model.load_state_dict(saved_state)
-    _, next_q_values = model(next_states, next_actions)
-    td_targets = rewards + gamma * (1 - dones) * next_q_values.unsqueeze(-1)
-    return td_targets
+    _, next_q_values = model(next_states, improved_next_actions)
+    td_targets = rewards + gamma * (1 - dones) * next_q_values
+    return td_targets, next_actions, improved_next_actions
 
 # Define a regularised loss for TD estimate
 def compute_td_est_loss(model, states, actions, td_targets, beta=BETA):
@@ -205,6 +207,9 @@ def compute_td_est_loss(model, states, actions, td_targets, beta=BETA):
 # Training Loop
 state, _ = env.reset()
 episode_start = 0
+episode_returns = []
+episode_reward = 0
+
 for training_step in range(TRAINING_STEPS):
     if training_step < int(INIT_EXPLORE_FRACTION * TRAINING_STEPS):
         # Take random actions for initial exploration
@@ -223,51 +228,65 @@ for training_step in range(TRAINING_STEPS):
             dist = torch.distributions.Laplace(mean, param)
         action = dist.sample().cpu().detach().numpy()[0]
         action = np.clip(action, action_low, action_high)
-    next_state, reward, done, _, _ = env.step(action)
+    next_state, reward, terminated, truncated, _ = env.step(action)
+    done = terminated or truncated
     replay_buffer.add((state, action, reward, next_state, done))
+
     # Calculate average returns
-    if training_step == 0:
+    if training_step == episode_start:
         average_returns[training_step] = reward
     else:
         average_returns[training_step] = average_returns[training_step - 1] + (reward - average_returns[training_step - 1]) / (training_step - episode_start + 1)
     state = next_state
+    episode_reward += reward
     if done:
         state, _ = env.reset()
         episode_start = training_step + 1
+        episode_returns.append(episode_reward)
+        episode_reward = 0
+
     # Sample a batch from the replay buffer
     states, actions, rewards, next_states, dones = replay_buffer.sample()
     states = torch.tensor(states, dtype=torch.float32).to(device)
-    actions = torch.tensor(actions, dtype=torch.float32, requires_grad=True).to(device)
+    actions = torch.tensor(actions, dtype=torch.float32).to(device)
     rewards = torch.FloatTensor(rewards).unsqueeze(1).to(device)
     next_states = torch.tensor(next_states, dtype=torch.float32).to(device)
     dones = torch.FloatTensor(dones).unsqueeze(1).to(device)
     training_step += 1
     # Skip the update steps if its the initial exploration phase
     if training_step >= int(INIT_EXPLORE_FRACTION * TRAINING_STEPS):
-        # Update Actor Network
-        actor_optimizer.zero_grad()
-        a_loss = actor_loss(model, states, actions)
-        a_loss.backward()
-        actor_optimizer.step()
+        
         # Update Critic Network (TODO: Implement critic update logic)
         critic_optimizer.zero_grad()
         td_est_optimizer.zero_grad()
+        actor_optimizer.zero_grad()
         # Compute TD targets
         # print(next_states.shape)
-        td_targets = compute_td_target(model, rewards, next_states, dones)
+        td_targets, next_actions, improved_next_actions = compute_td_target(model, rewards, next_states, dones)
         # Compute critic loss
         _, q_values = model(states, actions)
         critic_loss = F.mse_loss(q_values, td_targets)
         td_est_loss = compute_td_est_loss(model, states, actions, td_targets)
-        critic_loss.backward()
-        td_est_loss.backward()
+        critic_loss.backward(retain_graph=True)
+        td_est_loss.backward(retain_graph=True)
         critic_optimizer.step()
         td_est_optimizer.step()
+
+        # Update Actor Network
+        
+        # a_loss = actor_loss(model, states, actions)
+        a_loss = F.mse_loss(next_actions, improved_next_actions)
+        a_loss.backward()
+        actor_optimizer.step()
+
+        if training_step % 20 == 0:
+            print(f"Training Step: {training_step + 1}, actor loss: {a_loss.item()}, critic loss: {critic_loss.item()}, td_est loss: {td_est_loss.item()}, average return: {average_returns[training_step-1]}")
     
-    print(f"Training Step: {training_step + 1}")
+    # print(f"Training Step: {training_step + 1}")
 
 # Save Average Returns to a file
-np.save(f"average_returns_{ENV_NAME}_{POLICY_TYPE}.npy", average_returns)
+np.save(f"/home/bavish/scratch/average_returns_{ENV_NAME}_{POLICY_TYPE}.npy", average_returns)
+np.save(f"/home/bavish/scratch/episode_returns_{ENV_NAME}_{POLICY_TYPE}.npy", np.array(episode_returns))
     
 
 
