@@ -57,9 +57,11 @@ INIT_EXPLORE_FRACTION = 0.01  # Fraction of total training steps to use for init
 EPSILON = 1e-6
 NUM_SEEDS = 30
 SEEDS = [random.randint(0, 100000) for _ in range(NUM_SEEDS)]
+EVAL_EPISODES = 10
 
 # Create the environment 
 env = gym.make(ENV_NAME)
+eval_env = gym.make(ENV_NAME)
 state_dim = env.observation_space.shape[0]
 action_dim = env.action_space.shape[0]
 action_high = env.action_space.high[0]
@@ -155,8 +157,6 @@ replay_buffer = ReplayBuffer()
 # Store the average returns along training
 average_returns = np.zeros(TRAINING_STEPS)
 
-
-
 # Define a function to calculate TD targets 
 def compute_td_target(model, rewards, next_states, dones, gamma=GAMMA):
     with torch.no_grad():
@@ -204,10 +204,40 @@ def compute_td_est_loss(model, states, actions, td_targets, beta=BETA):
     loss = mse_loss + beta * reg_loss
     return loss
 
+# Offline Evaluation Function
+def evaluate_policy(model, eval_env, episodes=EVAL_EPISODES):
+    with torch.no_grad():
+        total_return = 0.0
+        for _ in range(episodes):
+            state, _ = eval_env.reset()
+            episode_return = 0.0
+            done = False
+            while not done:
+                state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
+                (mean, param) = model(state_tensor)[0]
+                if POLICY_TYPE == "gaussian":
+                    dist = torch.distributions.Normal(mean, param)
+                elif POLICY_TYPE == "uniform":
+                    lower_bound = mean - param
+                    upper_bound = mean + param
+                    dist = torch.distributions.Uniform(lower_bound, upper_bound)
+                elif POLICY_TYPE == "laplacian":
+                    dist = torch.distributions.Laplace(mean, param)
+                action = dist.mean.cpu().detach().numpy()[0]  # Use mean action for evaluation
+                action = np.clip(action, action_low, action_high)
+                next_state, reward, terminated, truncated, _ = eval_env.step(action)
+                done = terminated or truncated
+                episode_return += reward
+                state = next_state
+            total_return += episode_return
+        average_return = total_return / episodes
+    return average_return
+
 # Training Loop
 state, _ = env.reset()
 episode_start = 0
 episode_returns = []
+offline_episode_returns = []
 episode_reward = 0
 
 for training_step in range(TRAINING_STEPS):
@@ -255,7 +285,6 @@ for training_step in range(TRAINING_STEPS):
     training_step += 1
     # Skip the update steps if its the initial exploration phase
     if training_step >= int(INIT_EXPLORE_FRACTION * TRAINING_STEPS):
-        
         # Update Critic Network (TODO: Implement critic update logic)
         critic_optimizer.zero_grad()
         td_est_optimizer.zero_grad()
@@ -279,14 +308,20 @@ for training_step in range(TRAINING_STEPS):
         a_loss.backward()
         actor_optimizer.step()
 
-        if training_step % 20 == 0:
+        if (training_step + 1) % 20 == 0:
             print(f"Training Step: {training_step + 1}, actor loss: {a_loss.item()}, critic loss: {critic_loss.item()}, td_est loss: {td_est_loss.item()}, average return: {average_returns[training_step-1]}")
+        
+        if (training_step + 1) % 1000 == 0:
+            eval_return = evaluate_policy(model, eval_env, episodes=EVAL_EPISODES)
+            offline_episode_returns.append(eval_return)
+            print(f"Evaluation over {EVAL_EPISODES} episodes at step {training_step + 1}: Average Return: {eval_return}")
     
     # print(f"Training Step: {training_step + 1}")
 
 # Save Average Returns to a file
 np.save(f"/home/bavish/scratch/average_returns_{ENV_NAME}_{POLICY_TYPE}.npy", average_returns)
 np.save(f"/home/bavish/scratch/episode_returns_{ENV_NAME}_{POLICY_TYPE}.npy", np.array(episode_returns))
+np.save(f"/home/bavish/scratch/offline_episode_returns_{ENV_NAME}_{POLICY_TYPE}.npy", np.array(offline_episode_returns))
     
 
 
