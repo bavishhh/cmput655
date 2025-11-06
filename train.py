@@ -124,6 +124,18 @@ loss_types = {
 
 actor_loss = loss_types[POLICY_TYPE]
 
+# Define function to get distribution
+def get_dist(mean, param, policy_type):
+    if policy_type == "gaussian":
+        dist = torch.distributions.Normal(mean, param)
+    elif policy_type == "uniform":
+        lower_bound = mean - param
+        upper_bound = mean + param
+        dist = torch.distributions.Uniform(lower_bound, upper_bound)
+    elif policy_type == "laplacian":
+        dist = torch.distributions.Laplace(mean, param)
+    return dist
+
 # Define the optimizers [Learning rates of critic and td_est are same as design choice (Patterson, 2021)]
 actor_optimizer = optim.Adam(list(shared_policy) + list(mean_policy) + list(std_policy), lr=ACTOR_LR)
 critic_optimizer = optim.Adam(list(shared_critic) + list(critic_head), lr=CRITIC_LR)
@@ -162,14 +174,7 @@ def compute_td_target(model, rewards, next_states, dones, gamma=GAMMA):
     with torch.no_grad():
         # Sample next actions from the current policy
         (next_mean, next_param), _ = model(next_states)
-        if POLICY_TYPE == "gaussian":
-            dist = torch.distributions.Normal(next_mean, next_param)
-        elif POLICY_TYPE == "uniform":
-            lower_bound = next_mean - next_param
-            upper_bound = next_mean + next_param
-            dist = torch.distributions.Uniform(lower_bound, upper_bound)
-        elif POLICY_TYPE == "laplacian":
-            dist = torch.distributions.Laplace(next_mean, next_param)
+        dist = get_dist(next_mean, next_param, POLICY_TYPE)
         next_actions = dist.rsample()
     # Perform Gradient Ascent to find maximum Q-value for next states without updating model parameters
     saved_state = {k: v.clone() for k, v in model.state_dict().items()}
@@ -204,6 +209,29 @@ def compute_td_est_loss(model, states, actions, td_targets, beta=BETA):
     loss = mse_loss + beta * reg_loss
     return loss
 
+# Define function to compute critic gradients
+def compute_critic_gradients(model, states, actions, next_states, improved_next_actions):
+    _, current_q_values = model(states, actions)        # [B,1]
+    _, next_q_values    = model(next_states, improved_next_actions)
+    current_q_values = current_q_values.squeeze(-1)     # [B]
+    next_q_values    = next_q_values.squeeze(-1)
+    params = list(model.get_critic_params()[0]) + list(model.get_critic_params()[1])
+    current_q_gradients = []
+    next_q_gradients = []
+    for p in params:
+        batch_cgrads = []
+        batch_qgrads = []
+        for i in range(current_q_values.shape[0]):
+            cgrads = torch.autograd.grad(current_q_values[i], p, retain_graph=True, create_graph=True)[0]
+            batch_cgrads.append(cgrads.unsqueeze(0))
+            qgrads = torch.autograd.grad(next_q_values[i], p, retain_graph=True, create_graph=True)[0]
+            batch_qgrads.append(qgrads.unsqueeze(0))
+        batch_cgrads = torch.cat(batch_cgrads, dim=0)  # [B, *p.shape]
+        batch_qgrads = torch.cat(batch_qgrads, dim=0)  # [B, *p.shape]
+        current_q_gradients.append(batch_cgrads)
+        next_q_gradients.append(batch_qgrads)
+    return current_q_gradients, next_q_gradients
+
 # Offline Evaluation Function
 def evaluate_policy(model, eval_env, episodes=EVAL_EPISODES):
     with torch.no_grad():
@@ -215,14 +243,7 @@ def evaluate_policy(model, eval_env, episodes=EVAL_EPISODES):
             while not done:
                 state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
                 (mean, param) = model(state_tensor)[0]
-                if POLICY_TYPE == "gaussian":
-                    dist = torch.distributions.Normal(mean, param)
-                elif POLICY_TYPE == "uniform":
-                    lower_bound = mean - param
-                    upper_bound = mean + param
-                    dist = torch.distributions.Uniform(lower_bound, upper_bound)
-                elif POLICY_TYPE == "laplacian":
-                    dist = torch.distributions.Laplace(mean, param)
+                dist = get_dist(mean, param, POLICY_TYPE)
                 action = dist.mean.cpu().detach().numpy()[0]  # Use mean action for evaluation
                 action = np.clip(action, action_low, action_high)
                 next_state, reward, terminated, truncated, _ = eval_env.step(action)
@@ -248,14 +269,7 @@ for training_step in range(TRAINING_STEPS):
         # Sample action from the current policy
         state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
         (mean, param) = model(state_tensor)[0]
-        if POLICY_TYPE == "gaussian":
-            dist = torch.distributions.Normal(mean, param)
-        elif POLICY_TYPE == "uniform":
-            lower_bound = mean - param
-            upper_bound = mean + param
-            dist = torch.distributions.Uniform(lower_bound, upper_bound)
-        elif POLICY_TYPE == "laplacian":
-            dist = torch.distributions.Laplace(mean, param)
+        dist = get_dist(mean, param, POLICY_TYPE)
         action = dist.sample().cpu().detach().numpy()[0]
         action = np.clip(action, action_low, action_high)
     next_state, reward, terminated, truncated, _ = env.step(action)
@@ -277,10 +291,10 @@ for training_step in range(TRAINING_STEPS):
 
     # Sample a batch from the replay buffer
     states, actions, rewards, next_states, dones = replay_buffer.sample()
-    states = torch.tensor(states, dtype=torch.float32).to(device)
-    actions = torch.tensor(actions, dtype=torch.float32).to(device)
+    states = torch.tensor(states, dtype=torch.float32, requires_grad=True).to(device)
+    actions = torch.tensor(actions, dtype=torch.float32, requires_grad=True).to(device)
     rewards = torch.FloatTensor(rewards).unsqueeze(1).to(device)
-    next_states = torch.tensor(next_states, dtype=torch.float32).to(device)
+    next_states = torch.tensor(next_states, dtype=torch.float32, requires_grad=True).to(device)
     dones = torch.FloatTensor(dones).unsqueeze(1).to(device)
     training_step += 1
     # Skip the update steps if its the initial exploration phase
@@ -290,14 +304,25 @@ for training_step in range(TRAINING_STEPS):
         td_est_optimizer.zero_grad()
         actor_optimizer.zero_grad()
         # Compute TD targets
-        # print(next_states.shape)
         td_targets, next_actions, improved_next_actions = compute_td_target(model, rewards, next_states, dones)
-        # Compute critic loss
-        _, q_values = model(states, actions)
-        critic_loss = F.mse_loss(q_values, td_targets)
+        # Compute critic gradients and td_est loss
+        _, q_values, td_ests = model(states, actions, td_est=True)
+        current_q_gradient, next_q_gradient = compute_critic_gradients(model, states, actions, next_states, improved_next_actions)
+        index = 0
+        for param in list(model.get_critic_params()[0]) + list(model.get_critic_params()[1]):
+            cgrad, qgrad = current_q_gradient[index], next_q_gradient[index]
+            if len(param.shape) > 1:
+                td_ests = td_ests.unsqueeze(-1)
+                td_targets = td_targets.unsqueeze(-1)
+            term1 = GAMMA * td_ests * qgrad
+            term2 = td_targets * cgrad
+            param_grad = term1.sum(dim=0) - term2.sum(dim=0)
+            if len(param.shape) > 1:
+                td_ests = td_ests.squeeze(-1)
+                td_targets = td_targets.squeeze(-1)
+            index += 1
         td_est_loss = compute_td_est_loss(model, states, actions, td_targets)
-        critic_loss.backward(retain_graph=True)
-        td_est_loss.backward(retain_graph=True)
+        td_est_loss.backward()
         critic_optimizer.step()
         td_est_optimizer.step()
         # Update Actor Network
@@ -306,14 +331,12 @@ for training_step in range(TRAINING_STEPS):
         actor_optimizer.step()
 
         if (training_step + 1) % 20 == 0:
-            print(f"Training Step: {training_step + 1}, actor loss: {a_loss.item()}, critic loss: {critic_loss.item()}, td_est loss: {td_est_loss.item()}, average return: {average_returns[training_step-1]}")
+            print(f"Training Step: {training_step + 1}, actor loss: {a_loss.item()}, td_est loss: {td_est_loss.item()}, average return: {average_returns[training_step-1]}")
         
         if (training_step + 1) % 1000 == 0:
             eval_return = evaluate_policy(model, eval_env, episodes=EVAL_EPISODES)
             offline_episode_returns.append(eval_return)
             print(f"Evaluation over {EVAL_EPISODES} episodes at step {training_step + 1}: Average Return: {eval_return}")
-    
-    # print(f"Training Step: {training_step + 1}")
 
 # Save Average Returns to a file
 np.save(f"/home/bavish/scratch/average_returns_{ENV_NAME}_{POLICY_TYPE}.npy", average_returns)

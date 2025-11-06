@@ -103,10 +103,10 @@ class GaussianActorExpert(BaseActorExpert):
             # Critic forward pass
             state_action = torch.cat([state, action], dim=-1)
             q_value = self._critic(self._shared_critic(state_action))
-            return (mean, std), q_value if td_est == False else self._td_est(self._shared_critic(state_action))
+            return ((mean, std), q_value) if td_est == False else ((mean, std), q_value, self._td_est(self._shared_critic(state_action)))
         else:
             state_action = torch.cat([state, mean], dim=-1)
-            return (mean, std), self._critic(self._shared_critic(state_action)) if td_est == False else self._td_est(self._shared_critic(state_action))
+            return ((mean, std), self._critic(self._shared_critic(state_action))) if td_est == False else ((mean, std), self._critic(self._shared_critic(state_action)), self._td_est(self._shared_critic(state_action)))
     
     def get_actor_params(self):
         return self._shared_policy.parameters(), self._mean.parameters(), self._log_std.parameters()
@@ -167,7 +167,7 @@ class UniformActorExpert(BaseActorExpert):
         self._critic = nn.Linear(input_size, 1)
         self._td_est = nn.Linear(input_size, 1)
 
-    def forward(self, state, action=None):
+    def forward(self, state, action=None, td_est=False):
         # Actor forward pass
         shared_out = self._shared_policy(state)
         mean = self._mean(shared_out)
@@ -177,10 +177,10 @@ class UniformActorExpert(BaseActorExpert):
             # Critic forward pass
             state_action = torch.cat([state, action], dim=-1)
             q_value = self._critic(self._shared_critic(state_action))
-            return (mean, half_range), q_value
+            return ((mean, half_range), q_value) if td_est == False else ((mean, half_range), q_value, self._td_est(self._shared_critic(state_action)))
         else:
             state_action = torch.cat([state, mean], dim=-1)
-            return (mean, half_range), self._critic(self._shared_critic(state_action)) 
+            return ((mean, half_range), self._critic(self._shared_critic(state_action))) if td_est == False else ((mean, half_range), self._critic(self._shared_critic(state_action)), self._td_est(self._shared_critic(state_action)))
     
     def get_actor_params(self):
         return self._shared_policy.parameters(), self._mean.parameters(), self._half_range.parameters()
@@ -246,7 +246,7 @@ class LaplacianActorExpert(BaseActorExpert):
         self._critic = nn.Linear(input_size, 1)
         self._td_est = nn.Linear(input_size, 1)
     
-    def forward(self, state, action=None):
+    def forward(self, state, action=None, td_est=False):
         # Actor forward pass
         shared_out = self._shared_policy(state)
         mean = self._mean(shared_out)
@@ -258,10 +258,10 @@ class LaplacianActorExpert(BaseActorExpert):
             # Critic forward pass
             state_action = torch.cat([state, action], dim=-1)
             q_value = self._critic(self._shared_critic(state_action))
-            return (mean, std), q_value
+            return ((mean, std), q_value) if td_est == False else ((mean, std), q_value, self._td_est(self._shared_critic(state_action)))
         else:
             state_action = torch.cat([state, mean], dim=-1)
-            return (mean, std), self._critic(self._shared_critic(state_action))
+            return ((mean, std), self._critic(self._shared_critic(state_action))) if td_est == False else ((mean, std), self._critic(self._shared_critic(state_action)), self._td_est(self._shared_critic(state_action)))
     
     def get_actor_params(self):
         return self._shared_policy.parameters(), self._mean.parameters(), self._log_std.parameters()
