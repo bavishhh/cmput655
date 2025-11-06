@@ -90,30 +90,30 @@ shared_policy, mean_policy, std_policy = model.get_actor_params()
 shared_critic, critic_head, td_est_head = model.get_critic_params()
 
 # Define loss functions for each policy parameterization
-def gaussian_actor_loss(model, states, actions, alpha=ALPHA):
+def gaussian_actor_loss(model, states, improved_actions, alpha=ALPHA):
     (mean, std), _ = model(states)
     dist = torch.distributions.Normal(mean, std)
-    log_probs = dist.log_prob(actions).sum(dim=-1, keepdim=True)
-    _, q_values = model(states, actions)
-    loss = (alpha * log_probs - q_values).mean()
+    log_probs = dist.log_prob(improved_actions).sum(dim=-1, keepdim=True)
+    # _, q_values = model(states, improved_actions)
+    loss = (-alpha * log_probs).mean()
     return loss
 
-def uniform_actor_loss(model, states, actions, alpha=ALPHA):
+def uniform_actor_loss(model, states, improved_actions, alpha=ALPHA):
     (mean, half_range), _ = model(states)
     lower_bound = mean - half_range
     upper_bound = mean + half_range
-    in_bounds = ((actions >= lower_bound) & (actions <= upper_bound)).float()
+    in_bounds = ((improved_actions >= lower_bound) & (improved_actions <= upper_bound)).float()
     log_probs = torch.log(in_bounds / (2 * half_range + EPSILON)).sum(dim=-1, keepdim=True)
-    _, q_values = model(states, actions)
-    loss = (alpha * log_probs - q_values).mean()
+    # _, q_values = model(states, improved_actions)
+    loss = (-alpha * log_probs).mean()
     return loss
 
-def laplacian_actor_loss(model, states, actions, alpha=ALPHA):
+def laplacian_actor_loss(model, states, improved_actions, alpha=ALPHA):
     (mean, b), _ = model(states)
     dist = torch.distributions.Laplace(mean, b)
-    log_probs = dist.log_prob(actions).sum(dim=-1, keepdim=True)
-    _, q_values = model(states, actions)
-    loss = (alpha * log_probs - q_values).mean()
+    log_probs = dist.log_prob(improved_actions).sum(dim=-1, keepdim=True)
+    # _, q_values = model(states, improved_actions)
+    loss = (-alpha * log_probs).mean()
     return loss
 
 loss_types = {
@@ -300,11 +300,8 @@ for training_step in range(TRAINING_STEPS):
         td_est_loss.backward(retain_graph=True)
         critic_optimizer.step()
         td_est_optimizer.step()
-
         # Update Actor Network
-        
-        # a_loss = actor_loss(model, states, actions)
-        a_loss = F.mse_loss(next_actions, improved_next_actions)
+        a_loss = actor_loss(model, next_states, improved_next_actions)
         a_loss.backward()
         actor_optimizer.step()
 
