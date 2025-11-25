@@ -10,7 +10,8 @@ import torch.nn.functional as F
 import gymnasium as gym
 import argparse
 import random
-from actorexpert import GaussianActorExpert, UniformActorExpert, LaplacianActorExpert
+import wandb
+from actorexpert import GaussianActorExpert
 
 # Define the argument parser
 parser = argparse.ArgumentParser()
@@ -29,6 +30,7 @@ parser.add_argument("--policy_type", type=str, default="gaussian", choices=["gau
 parser.add_argument("--alpha", type=float, default=0.1, help="Entropy Regularization coefficient for proposal policy")
 parser.add_argument("--beta", type=float, default=0.1, help="Regularization coefficient for critic updates")
 parser.add_argument("--tau", type=int, default=10, help="Number of gradient steps for Q-value maximization")
+parser.add_argument("--seed", type=int, default=0)
 args = parser.parse_args()
 
 # Define the device to be used
@@ -50,6 +52,7 @@ TRAINING_STEPS = args.training_steps
 ALPHA = args.alpha
 BETA = args.beta
 TAU = args.tau
+SEED = args.seed
 
 # Hyperparameters - Design Choice
 GAMMA = 0.99  
@@ -57,9 +60,18 @@ INIT_EXPLORE_FRACTION = 0.01
 PRINT_FREQUENCY = 100
 EVAL_FREQUENCY = 1000
 EPSILON = 1e-6
-NUM_SEEDS = 30
-SEEDS = [random.randint(0, 100000) for _ in range(NUM_SEEDS)]
 EVAL_EPISODES = 10
+
+
+np.random.seed(SEED)
+random.seed(SEED)
+torch.manual_seed(SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
 
 # Create the environment 
 env = gym.make(ENV_NAME)
@@ -74,8 +86,8 @@ print(f"Environment: {ENV_NAME}, State Dim: {state_dim}, Action Dim: {action_dim
 # Initialize the ActorExpert model based on policy type
 policy_types = {
     "gaussian": GaussianActorExpert,
-    "uniform": UniformActorExpert,
-    "laplacian": LaplacianActorExpert
+    # "uniform": UniformActorExpert,
+    # "laplacian": LaplacianActorExpert
 }
 
 # Initialize the ActorExpert model
@@ -241,6 +253,8 @@ offline_episode_returns = []
 actor_losses = []
 policy_losses = []
 
+wandb.init(project="CMPUT655", config=args)
+
 for training_step in range(TRAINING_STEPS):
     if training_step < int(INIT_EXPLORE_FRACTION * TRAINING_STEPS):
         # Take random actions for initial exploration
@@ -253,7 +267,7 @@ for training_step in range(TRAINING_STEPS):
         action = dist.rsample().cpu().detach().numpy()[0]
         action = np.clip(action, action_low, action_high)
     next_state, reward, terminated, truncated, _ = env.step(action)
-    done = terminated or truncated
+    done = terminated # or truncated
     replay_buffer.add((state, action, reward, next_state, done))
 
     # Sample a batch from the replay buffer
@@ -309,21 +323,23 @@ for training_step in range(TRAINING_STEPS):
         policy_optimizer.step()
 
         if (training_step + 1) % PRINT_FREQUENCY == 0:
-            print(f"Training Step: {training_step + 1}, actor loss: {a_loss.item()}, proposal policy loss: {p_loss.item()}")
+            # print(f"Training Step: {training_step + 1}, actor loss: {a_loss.item()}, proposal policy loss: {p_loss.item()}")
+            wandb.log({"train/step": training_step, "train/actor_loss": a_loss.item(), "train/proposal_loss": p_loss.item()})
             actor_losses.append(a_loss.item())
             policy_losses.append(p_loss.item())
         
         if (training_step + 1) % EVAL_FREQUENCY == 0:
             eval_return = evaluate_policy(model, eval_env, episodes=EVAL_EPISODES)
             offline_episode_returns.append(eval_return)
-            print(f"Evaluation over {EVAL_EPISODES} episodes at step {training_step + 1}: Average Return: {eval_return}")
+            # print(f"Evaluation over {EVAL_EPISODES} episodes at step {training_step + 1}: Average Return: {eval_return}")
+            wandb.log({"eval/step": training_step, "eval/avg_return": eval_return})
         
     training_step += 1
 
 # Save Average Returns to a file
-np.save(f"/home/saigp/scratch/cmput655/actor_losses_{ENV_NAME}_{POLICY_TYPE}.npy", np.array(actor_losses))
-np.save(f"/home/saigp/scratch/cmput655/policy_losses_{ENV_NAME}_{POLICY_TYPE}.npy", np.array(policy_losses))
-np.save(f"/home/saigp/scratch/cmput655/offline_episode_returns_{ENV_NAME}_{POLICY_TYPE}.npy", np.array(offline_episode_returns))
+np.save(f"~/scratch/cmput655/actor_losses_{ENV_NAME}_{POLICY_TYPE}.npy", np.array(actor_losses))
+np.save(f"~/scratch/cmput655/policy_losses_{ENV_NAME}_{POLICY_TYPE}.npy", np.array(policy_losses))
+np.save(f"~/scratch/cmput655/offline_episode_returns_{ENV_NAME}_{POLICY_TYPE}.npy", np.array(offline_episode_returns))
     
 
 
