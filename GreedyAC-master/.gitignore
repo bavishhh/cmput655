@@ -1,0 +1,25 @@
+# Virtual environments
+venv/
+
+**/__pycache__/
+
+**/*.ipynb
+
+**/*.pyc
+
+# Don't store any results
+results/
+
+# Ignore binary files
+**/*.pkl
+**/*.bin
+**/*.npy
+
+**/*.DS_Store
+
+# Vim files
+**/.tags
+**/*.swp
+**/*~
+
+gym-puddle/
