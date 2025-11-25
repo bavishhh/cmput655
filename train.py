@@ -253,7 +253,7 @@ offline_episode_returns = []
 actor_losses = []
 policy_losses = []
 
-wandb.init(project="CMPUT655", config=args)
+wandb.init(entity="cmput655", project="GARE", config=args)
 
 for training_step in range(TRAINING_STEPS):
     if training_step < int(INIT_EXPLORE_FRACTION * TRAINING_STEPS):
