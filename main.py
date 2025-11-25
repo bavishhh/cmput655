@@ -6,9 +6,12 @@ import numpy as np
 env = gym.make("MountainCarContinuous-v0")
 eval_env = gym.make("MountainCarContinuous-v0")
 
+pendulum_env = gym.make("Pendulum-v1")
+eval_pendulum_env = gym.make("Pendulum-v1")
+
 agent = GreedyAC(
-    num_inputs=env.observation_space.shape[0],
-    action_space=env.action_space,
+    num_inputs=pendulum_env.observation_space.shape[0],
+    action_space=pendulum_env.action_space,
     gamma=0.99,
     alpha=10.0,
     tau=0.01,
@@ -24,20 +27,21 @@ agent = GreedyAC(
     rho=0.1,
     num_samples=30,
     betas=(0.9, 0.999),
-    env=env,
+    env=pendulum_env,
     cuda=False,
     clip_stddev=1000
 )
 
 exp = Experiment(
     agent=agent,
-    env=env, 
-    eval_env=eval_env, 
-    eval_episodes=10,
-    total_timesteps=int(1e5),
+    env=pendulum_env, 
+    eval_env=eval_pendulum_env, 
+    eval_episodes=1,
+    total_timesteps=int(1e6),
     eval_interval_timesteps=10000
 )
 
 exp.run()
 
-print(exp.info['eval_episode_rewards'])
+# print(exp.info['eval_episode_rewards'])
+# print(exp.info["train_episode_rewards"])

@@ -2,7 +2,7 @@ import time
 from datetime import datetime
 from copy import deepcopy
 import numpy as np
-
+from torch.utils.tensorboard import SummaryWriter
 
 class Experiment:
     """
@@ -41,7 +41,7 @@ class Experiment:
 
         self.eval_episodes = eval_episodes
         self.max_episodes = max_episodes
-        self.steps_per_episode = 999
+        self.steps_per_episode = 200
 
         # Track the number of time steps
         self.timesteps_since_last_eval = 0
@@ -70,6 +70,21 @@ class Experiment:
         # Anything the experiment tracks
         self.info = {}
 
+        experiment_name = None
+        log_dir = None
+
+        if experiment_name is None:
+            experiment_name = datetime.now().strftime("%Y%m%d-%H%M%S")
+        
+        if log_dir is None:
+            log_dir = f'runs/{experiment_name}'
+        else:
+            log_dir = f'{log_dir}/{experiment_name}'
+            
+        self.writer = SummaryWriter(log_dir=log_dir)
+        print(f"TensorBoard logs will be saved to: {log_dir}")
+        print(f"To view, run: tensorboard --logdir={log_dir}")
+
         # Track the total training and evaluation time
         self.train_time = 0.0
         self.eval_time = 0.0
@@ -97,6 +112,11 @@ class Experiment:
             self.train_ep_return.append(ep_reward)
             self.train_ep_steps.append(ep_steps)
             self.train_time += train_time
+
+            self.writer.add_scalar('Train/Episode_Return', ep_reward, self.train_episodes)
+            self.writer.add_scalar('Train/Episode_Steps', ep_steps, self.train_episodes)
+            self.writer.add_scalar('Train/Episode_Time', train_time, self.train_episodes)
+            self.writer.add_scalar('Train/Timesteps_Elapsed', self.timesteps_elapsed, self.train_episodes)
             print(f"=== Train ep: {i}, r: {ep_reward}, n_steps: {ep_steps}, " +
                   f"elapsed: {train_time}")
             i += 1
@@ -110,6 +130,11 @@ class Experiment:
         print(f"Total time taken: {end_run - start_run}")
         print(f"Training time: {self.train_time}")
         print(f"Evaluation time: {self.eval_time}")
+
+        self.writer.add_scalar('Summary/Total_Time', end_run - start_run, 0)
+        self.writer.add_scalar('Summary/Training_Time', self.train_time, 0)
+        self.writer.add_scalar('Summary/Evaluation_Time', self.eval_time, 0)
+        self.writer.add_scalar('Summary/Total_Episodes', self.train_episodes, 0)
 
         self.info["eval_episode_rewards"] = np.array(self.eval_ep_return)
         self.info["eval_episode_steps"] = np.array(self.eval_ep_steps)
