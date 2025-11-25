@@ -1,5 +1,5 @@
 # Import modules
-import gym
+import gymnasium as gym
 from copy import deepcopy
 from env.PendulumEnv import PendulumEnv
 from env.Acrobot import AcrobotEnv

@@ -156,7 +156,8 @@ class Experiment:
                 self.timesteps_at_eval.append(self.timesteps_elapsed)
 
             # Sample the next transition
-            next_state, reward, done, info = self.env.step(action)
+            next_state, reward, terminated, truncated, info = self.env.step(action)
+            done = terminated or truncated
             episode_steps += 1
 
             episode_rewards.append(reward)
@@ -173,11 +174,7 @@ class Experiment:
                 # Bandit problem
                 done_mask = 0
             else:
-                if episode_steps <= self.steps_per_episode and done and \
-                        not info["steps_exceeded"]:
-                    done_mask = 0
-                else:
-                    done_mask = 1
+                done_mask = 1 if terminated else 0
 
             # Update agent
             self.agent.update(state, action, reward, next_state, done_mask)
@@ -274,7 +271,8 @@ class Experiment:
         action = self.agent.sample_action(state)
 
         while not done:
-            next_state, reward, done, _ = self.eval_env.step(action)
+            next_state, reward, terminated, truncated, _ = self.eval_env.step(action)
+            done = terminated or truncated
 
             episode_return += reward
 
