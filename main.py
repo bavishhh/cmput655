@@ -36,9 +36,9 @@ exp = Experiment(
     agent=agent,
     env=pendulum_env, 
     eval_env=eval_pendulum_env, 
-    eval_episodes=1,
+    eval_episodes=10,
     total_timesteps=int(1e6),
-    eval_interval_timesteps=10000
+    eval_interval_timesteps=1000
 )
 
 exp.run()

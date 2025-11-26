@@ -131,12 +131,10 @@ class Experiment:
         print(f"Training time: {self.train_time}")
         print(f"Evaluation time: {self.eval_time}")
 
-        self.writer.add_scalar('Summary/Total_Time', end_run - start_run, 0)
-        self.writer.add_scalar('Summary/Training_Time', self.train_time, 0)
-        self.writer.add_scalar('Summary/Evaluation_Time', self.eval_time, 0)
-        self.writer.add_scalar('Summary/Total_Episodes', self.train_episodes, 0)
-
         self.info["eval_episode_rewards"] = np.array(self.eval_ep_return)
+        self.writer.add_scalar('Eval/Average_Episode_Return',
+                               np.mean(self.eval_ep_return[-1]),
+                               self.train_episodes)
         self.info["eval_episode_steps"] = np.array(self.eval_ep_steps)
         self.info["timesteps_at_eval"] = np.array(self.timesteps_at_eval)
         self.info["train_episode_steps"] = np.array(self.train_ep_steps)
