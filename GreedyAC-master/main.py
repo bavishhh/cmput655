@@ -124,8 +124,7 @@ def main(agent_config, env_config, index, monitor, after,
     # If running on Compute Canada, then save in project directory
     if "computecanada" in host.lower():
         home = os.path.expanduser("~")
-        save_dir = os.path.join(f"{home}/project/def-whitem/sfneuman/" +
-                                "CEM-PyTorch", save_dir[2:])
+        save_dir = os.path.join(f"{home}/scratch/cmput655/GreedyAC-master/results", save_dir)
 
     # Append name of environment and agent to the save directory
     save_dir = os.path.join(save_dir, env_config["env_name"] + "_" +

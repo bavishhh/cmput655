@@ -1,7 +1,7 @@
 # Import modules
 import torch
 import inspect
-from gym.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete
 import numpy as np
 import torch.nn.functional as F
 from torch.optim import Adam
@@ -87,6 +87,7 @@ class VAC(BaseAgent):
         # Set the seed for all random number generators, this includes
         # everything used by PyTorch, including setting the initial weights
         # of networks. PyTorch prefers seeds with many non-zero binary units
+        self.seed = seed
         self.torch_rng = torch.manual_seed(seed)
         self.rng = np.random.default_rng(seed)
 

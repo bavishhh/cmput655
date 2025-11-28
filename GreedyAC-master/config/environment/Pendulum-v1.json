@@ -1,9 +1,9 @@
 {
-    "env_name": "Pendulum-v0",
+    "env_name": "Pendulum-v1",
     "total_timesteps": 100000,
-    "steps_per_episode": 1000,
-    "eval_interval_timesteps": 110000,
-    "eval_episodes": 0,
+    "steps_per_episode": 200,
+    "eval_interval_timesteps": 1000,
+    "eval_episodes": 10,
     "gamma": 0.99,
     "overwrite_rewards": false,
 	"continuous": true,

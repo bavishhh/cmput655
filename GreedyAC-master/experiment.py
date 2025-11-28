@@ -38,11 +38,11 @@ class Experiment:
         self.env = env
         self.eval_env = eval_env
         self.eval_env.monitor = False
+        self.seed = self.agent.seed
 
         self.eval_episodes = eval_episodes
         self.max_episodes = max_episodes
-        self.steps_per_episode = 999
-
+        
         # Track the number of time steps
         self.timesteps_since_last_eval = 0
         self.eval_interval_timesteps = eval_interval_timesteps
@@ -143,7 +143,7 @@ class Experiment:
         episode_return = 0.0
         episode_steps = 0
 
-        state, _ = self.env.reset()
+        state, _ = self.env.reset(seed=self.seed)
 
         done = False
         action = self.agent.sample_action(state)
@@ -156,7 +156,7 @@ class Experiment:
                 self.timesteps_at_eval.append(self.timesteps_elapsed)
 
             # Sample the next transition
-            next_state, reward, done, info = self.env.step(action)
+            next_state, reward, terminated, truncated, info = self.env.step(action)
             episode_steps += 1
 
             episode_rewards.append(reward)
@@ -169,18 +169,23 @@ class Experiment:
             # `effective_target = done_mask * target`. For example, when
             # updating state-value function v(s) using gradient descent, we'll
             # use v(s) <- v(s) + α(r + done_mask * v(s') - v(s))
-            if self.steps_per_episode <= 1:
-                # Bandit problem
-                done_mask = 0
+            if terminated:
+                done_mask = 1
             else:
-                if episode_steps <= self.steps_per_episode and done and \
-                        not info["steps_exceeded"]:
-                    done_mask = 0
-                else:
-                    done_mask = 1
+                done_mask = 0
+            # if self.env.steps_per_episode <= 1:
+            #     # Bandit problem
+            #     done_mask = 0
+            # else:
+            #     if episode_steps <= self.env.steps_per_episode and done and \
+            #             not info["steps_exceeded"]:
+            #         done_mask = 0
+            #     else:
+            #         done_mask = 1
 
             # Update agent
             self.agent.update(state, action, reward, next_state, done_mask)
+            done = terminated or truncated
 
             # Continue the episode if not done
             if not done:
@@ -265,7 +270,7 @@ class Experiment:
             The episodic return and number of steps and the sequence of states,
             rewards, and actions during the episode
         """
-        state, _ = self.eval_env.reset()
+        state, _ = self.eval_env.reset(seed=self.seed)
 
         episode_return = 0.0
         episode_steps = 0
@@ -274,7 +279,8 @@ class Experiment:
         action = self.agent.sample_action(state)
 
         while not done:
-            next_state, reward, done, _ = self.eval_env.step(action)
+            next_state, reward, terminated, truncated, _ = self.eval_env.step(action)
+            done = terminated or truncated
 
             episode_return += reward
 

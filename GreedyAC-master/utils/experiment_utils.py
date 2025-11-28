@@ -24,11 +24,6 @@ def create_agent(agent, config):
     baseAgent.BaseAgent
         The agent to train
     """
-    # Random agent
-    if agent.lower() == "random":
-        from agent.Random import Random
-        return Random(config["action_space"], config["seed"])
-
     # Vanilla Actor-Critic
     if agent.lower() == "VAC".lower():
         if "activation" in config:

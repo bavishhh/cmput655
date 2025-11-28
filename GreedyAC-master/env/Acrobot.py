@@ -5,8 +5,8 @@
 import numpy as np
 from numpy import sin, cos, pi
 
-from gym import spaces
-import gym
+from gymnasium import spaces
+import gymnasium as gym
 
 
 class AcrobotEnv(gym.Env):
@@ -108,7 +108,7 @@ class AcrobotEnv(gym.Env):
         else:
             assert self.action_space.contains(
                 a
-            ), f"{action!r} ({type(action)}) invalid"
+            ), f"{a!r} ({type(a)}) invalid"
 
             torque = self.AVAIL_TORQUE[a]
 
@@ -187,7 +187,7 @@ class AcrobotEnv(gym.Env):
         return (dtheta1, dtheta2, ddtheta1, ddtheta2, 0.0)
 
     def render(self, mode="human"):
-        from gym.utils import pyglet_rendering
+        from gymnasium.utils import pyglet_rendering
 
         s = self.state
 
