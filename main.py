@@ -1,17 +1,34 @@
-from agent.nonlinear.GreedyAC import GreedyAC
-from experiment import Experiment
+from agent.nonlinear.GreedyACGA import GreedyAC
+from experimentt import Experiment
 import gymnasium as gym
 import numpy as np
+import sys 
+import environment
 
-env = gym.make("MountainCarContinuous-v0")
-eval_env = gym.make("MountainCarContinuous-v0")
+env_config = {
+    "env_name": "Pendulum-v0",
+    "total_timesteps": 100000,
+    "steps_per_episode": 1000,
+    "eval_interval_timesteps": 110000,
+    "eval_episodes": 0,
+    "gamma": 0.99,
+    "overwrite_rewards": False,
+	"continuous": True,
+    "rewards": {},
+    "seed": 42,
+    "start_state": []
+}
 
-pendulum_env = gym.make("Pendulum-v1")
-eval_pendulum_env = gym.make("Pendulum-v1")
+RANDOM_SEED = 42
+monitor = False
+after = -1
+
+env = environment.Environment(env_config, RANDOM_SEED, monitor, after)
+eval_env = environment.Environment(env_config, RANDOM_SEED)
 
 agent = GreedyAC(
-    num_inputs=pendulum_env.observation_space.shape[0],
-    action_space=pendulum_env.action_space,
+    num_inputs=env.observation_space.shape[0],
+    action_space=env.action_space,
     gamma=0.99,
     alpha=10.0,
     tau=0.01,
@@ -27,18 +44,18 @@ agent = GreedyAC(
     rho=0.1,
     num_samples=30,
     betas=(0.9, 0.999),
-    env=pendulum_env,
+    env=env,
     cuda=False,
     clip_stddev=1000
 )
 
 exp = Experiment(
     agent=agent,
-    env=pendulum_env, 
-    eval_env=eval_pendulum_env, 
+    env=env,
+    eval_env=eval_env,
     eval_episodes=10,
-    total_timesteps=int(1e6),
-    eval_interval_timesteps=1000
+    total_timesteps=100_000,
+    eval_interval_timesteps=10_000,
 )
 
 exp.run()

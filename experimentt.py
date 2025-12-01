@@ -41,7 +41,6 @@ class Experiment:
 
         self.eval_episodes = eval_episodes
         self.max_episodes = max_episodes
-        self.steps_per_episode = 200
 
         # Track the number of time steps
         self.timesteps_since_last_eval = 0
@@ -106,20 +105,20 @@ class Experiment:
         while self.timesteps_elapsed < self.total_timesteps and \
                 (self.train_episodes < self.max_episodes if
                  self.max_episodes > 0 else True):
-            
+
             # Run the training episode and save the relevant info
             ep_reward, ep_steps, train_time = self.run_episode_train()
             self.train_ep_return.append(ep_reward)
             self.train_ep_steps.append(ep_steps)
             self.train_time += train_time
+            print(f"=== Train ep: {i}, r: {ep_reward}, n_steps: {ep_steps}, " +
+                  f"elapsed: {train_time}")
+            i += 1
 
             self.writer.add_scalar('Train/Episode_Return', ep_reward, self.train_episodes)
             self.writer.add_scalar('Train/Episode_Steps', ep_steps, self.train_episodes)
             self.writer.add_scalar('Train/Episode_Time', train_time, self.train_episodes)
             self.writer.add_scalar('Train/Timesteps_Elapsed', self.timesteps_elapsed, self.train_episodes)
-            print(f"=== Train ep: {i}, r: {ep_reward}, n_steps: {ep_steps}, " +
-                  f"elapsed: {train_time}")
-            i += 1
 
         # Evaluate once at the end
         self.eval_time += self.eval()
@@ -132,9 +131,6 @@ class Experiment:
         print(f"Evaluation time: {self.eval_time}")
 
         self.info["eval_episode_rewards"] = np.array(self.eval_ep_return)
-        self.writer.add_scalar('Eval/Average_Episode_Return',
-                               np.mean(self.eval_ep_return[-1]),
-                               self.train_episodes)
         self.info["eval_episode_steps"] = np.array(self.eval_ep_steps)
         self.info["timesteps_at_eval"] = np.array(self.timesteps_at_eval)
         self.info["train_episode_steps"] = np.array(self.train_ep_steps)
@@ -165,7 +161,6 @@ class Experiment:
         start = time.time()
         episode_return = 0.0
         episode_steps = 0
-
         state, _ = self.env.reset()
 
         done = False
@@ -179,10 +174,8 @@ class Experiment:
                 self.timesteps_at_eval.append(self.timesteps_elapsed)
 
             # Sample the next transition
-            next_state, reward, terminated, truncated = self.env.step(action)
-            done = terminated or truncated
-            print("CHECK THIS PLEASE")
-            print(done)
+
+            next_state, reward, done, info = self.env.step(action)
             episode_steps += 1
 
             episode_rewards.append(reward)
@@ -195,11 +188,15 @@ class Experiment:
             # `effective_target = done_mask * target`. For example, when
             # updating state-value function v(s) using gradient descent, we'll
             # use v(s) <- v(s) + α(r + done_mask * v(s') - v(s))
-            if self.steps_per_episode <= 1:
+            if self.env.steps_per_episode <= 1:
                 # Bandit problem
                 done_mask = 0
             else:
-                done_mask = 1 if terminated else 0
+                if episode_steps <= self.env.steps_per_episode and done and \
+                        not info["steps_exceeded"]:
+                    done_mask = 0
+                else:
+                    done_mask = 1
 
             # Update agent
             self.agent.update(state, action, reward, next_state, done_mask)
@@ -265,14 +262,12 @@ class Experiment:
                   str(episode_reward) + ", n_steps: " + str(num_steps) +
                   ", elapsed: " +
                   time.strftime("%H:%M:%S", time.gmtime(eval_elapsed_time)))
-
             self.writer.add_scalar('Eval/Episode_Return', episode_reward, self.train_episodes)
             self.writer.add_scalar('Eval/Num_Steps', num_steps, self.train_episodes)
 
         # Save evaluation data
         self.eval_ep_return.append(temp_rewards_per_episode)
         self.eval_ep_steps.append(episode_steps)
-                               
 
         self.eval_time += eval_session_time
 
@@ -300,8 +295,7 @@ class Experiment:
         action = self.agent.sample_action(state)
 
         while not done:
-            next_state, reward, terminated, truncated = self.eval_env.step(action)
-            done = terminated or truncated
+            next_state, reward, done, _ = self.eval_env.step(action)
 
             episode_return += reward
 

@@ -153,7 +153,7 @@ class PendulumEnv(gym.Env):
             u = np.clip(u, -self.max_torque, self.max_torque)[0]
         else:
             assert self.action_space.contains(u), \
-                f"{action!r} ({type(action)}) invalid"
+                f"{u!r} ({type(u)}) invalid"
             u = (u - 1) * self.max_torque  # [-max_torque, 0, max_torque]
 
         self.last_u = u  # for rendering
