@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --time=07:00:00
-#SBATCH --array=0-749
+#SBATCH --time=03:30:00
+#SBATCH --array=0-539
 #SBATCH --account=aip-lelis
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=2
 #SBATCH --mem-per-cpu=8G
 #SBATCH --ntasks=1
 #SBATCH --job-name GreedyAC-hypers-sweep-1of6
@@ -17,6 +17,8 @@ source $SLURM_TMPDIR/env/bin/activate
 pip install --no-index --upgrade pip
 pip install click
 pip install gymnasium
+pip install gym
+pip install wandb
 pip install torch
 pip install minatar
 pip install bootstrapped==0.0.2

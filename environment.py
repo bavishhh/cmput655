@@ -1,5 +1,5 @@
 # Import modules
-import gymnasium as gym
+import gym
 from copy import deepcopy
 from env.PendulumEnv import PendulumEnv
 from env.Acrobot import AcrobotEnv
@@ -34,7 +34,6 @@ class Environment:
         self.overwrite_rewards = config["overwrite_rewards"]
         self.rewards = config["rewards"]
         self.start_state = np.array(config["start_state"])
-        self.seed = seed
 
         self.steps = 0
         self.episodes = 0
@@ -47,11 +46,12 @@ class Environment:
 
         self.env = env_factory(config)
         print("Seeding environment:", seed)
+        self.env.seed(seed=seed)
         self.steps_per_episode = config["steps_per_episode"]
 
         # Increase the episode steps of the wrapped OpenAI gym environment so
         # that this wrapper will timeout before the OpenAI gym one does
-        # self.env._max_episode_steps = self.steps_per_episode + 10
+        self.env._max_episode_steps = self.steps_per_episode + 10
 
         if "info" in dir(self.env):
             self.info = self.env.info
@@ -91,9 +91,9 @@ class Environment:
         seed : int
             The random seed to seed the environment with
         """
-        pass
+        self.env.seed(seed)
 
-    def reset(self, seed):
+    def reset(self):
         """
         Resets the environment by resetting the step counter to 0 and resetting
         the wrapped environment. This function also increments the total
@@ -107,7 +107,7 @@ class Environment:
         self.steps = 0
         self.episodes += 1
 
-        state, _ = self.env.reset(seed=seed)
+        state = self.env.reset()
 
         # If the user has inputted a fixed start state, use that instead
         if self.start_state.shape[0] != 0:
@@ -145,10 +145,26 @@ class Environment:
         self.steps_until_monitor -= (1 if self.steps_until_monitor >= 0 else 0)
 
         # Get the next state, reward, and done flag
-        state, reward, terminated, truncated, info = self.env.step(action)
+        state, reward, done, info = self.env.step(action)
         info["orig_state"] = state
 
-        return state, reward, terminated, truncated, info
+        # If the episode completes, return the goal reward
+        if done:
+            info["steps_exceeded"] = False
+            if self.overwrite_rewards:
+                reward = self.rewards["goal"]
+            return state, reward, done, info
+
+        # If the user has set rewards per timestep
+        if self.overwrite_rewards:
+            reward = self.rewards["timestep"]
+
+        # If the maximum time-step was reached
+        if self.steps >= self.steps_per_episode > 0:
+            done = True
+            info["steps_exceeded"] = True
+
+        return state, reward, done, info
 
 
 def env_factory(config):
@@ -169,90 +185,78 @@ def env_factory(config):
     seed = config["seed"]
     env = None
 
-    if name == "Pendulum-v1":
-        env = gym.make(id=name)
-    
-    elif name == "MountainCarContinuous-v0":
-        env = gym.make(id=name)
-    
+    if name == "Pendulum-v0":
+        env = PendulumEnv(seed=seed, continuous_action=config["continuous"])
+
+    elif name == "PendulumPenalty-v0":
+        env = pp.PendulumEnv(seed=seed, continuous_action=config["continuous"])
+
+    elif name == "PositivePendulumPenalty-v0":
+        env = ppp.PendulumEnv(seed=seed,
+                              continuous_action=config["continuous"])
+
+    elif name == "PendulumNoShaped-v0":
+        env = pens.PendulumEnv(seed=seed,
+                               continuous_action=config["continuous"])
+
+    elif name == "PendulumNoShapedPenalty-v0":
+        env = pensp.PendulumEnv(seed=seed,
+                                continuous_action=config["continuous"])
+
+    elif name == "MountainCarShaped":
+        env = mcs.MountainCar()
+
+    elif name == "Bimodal" or name == "Bimodal":
+        reward_variance = config.get("reward_variance", True)
+        env = Bimodal(seed, reward_variance)
+
+    elif name == "Bandit":
+        n_actions = config.get("n_action", 10)
+        env = Bandit(seed, n_actions)
+
+    elif name == "ContinuousCartpole-v0":
+        env = ContinuousCartPoleEnv()
+
+    elif name == "IndexGridworld":
+        env = IndexGridworldEnv(config["rows"], config["cols"])
+        env.seed(seed)
+
+    elif name == "XYGridworld":
+        env = XYGridworldEnv(config["rows"], config["cols"])
+        env.seed(seed)
+
+    elif name == "Gridworld":
+        env = GridworldEnv(config["rows"], config["cols"])
+        env.seed(seed)
+
+    elif name == "PuddleWorld-v1":
+        env = PuddleWorldEnv(continuous=config["continuous"], seed=seed)
+
+    elif name == "Acrobot-v1":
+        env = AcrobotEnv(seed=seed, continuous_action=config["continuous"])
+
+    elif name == "CGW":
+        env = CGW.GridWorld()
+
+    elif name == "ContinuousGridWorld":
+        env = ContinuousGridWorld.GridWorld()
+
+    elif "minatar" in name.lower():
+        if "/" in name:
+            raise ValueError(f"specify environment as MinAtar{name} rather " +
+                             "than MinAtar/{name}")
+        minimal_actions = config.get("use_minimal_action_set", True)
+        stripped_name = name[7:].lower()  # Strip off "MinAtar"
+        env = MinAtar.GymEnv(
+            stripped_name,
+            use_minimal_action_set=minimal_actions,
+        )
+
     else:
-        raise ValueError(f"Environment {name} not recognized.")
-    
+        # Ensure we use the base gym environment. `gym.make` returns a TimeStep
+        # environment wrapper, but we want the underlying environment alone.
+        env = gym.make(name).env
+        env.seed(seed)
+
     print(config)
     return env
-
-    # if name == "Pendulum-v0":
-    #     env = PendulumEnv(seed=seed, continuous_action=config["continuous"])
-
-    # elif name == "PendulumPenalty-v0":
-    #     env = pp.PendulumEnv(seed=seed, continuous_action=config["continuous"])
-
-    # elif name == "PositivePendulumPenalty-v0":
-    #     env = ppp.PendulumEnv(seed=seed,
-    #                           continuous_action=config["continuous"])
-
-    # elif name == "PendulumNoShaped-v0":
-    #     env = pens.PendulumEnv(seed=seed,
-    #                            continuous_action=config["continuous"])
-
-    # elif name == "PendulumNoShapedPenalty-v0":
-    #     env = pensp.PendulumEnv(seed=seed,
-    #                             continuous_action=config["continuous"])
-
-    # elif name == "MountainCarShaped":
-    #     env = mcs.MountainCar()
-
-    # elif name == "Bimodal" or name == "Bimodal":
-    #     reward_variance = config.get("reward_variance", True)
-    #     env = Bimodal(seed, reward_variance)
-
-    # elif name == "Bandit":
-    #     n_actions = config.get("n_action", 10)
-    #     env = Bandit(seed, n_actions)
-
-    # elif name == "ContinuousCartpole-v0":
-    #     env = ContinuousCartPoleEnv()
-
-    # elif name == "IndexGridworld":
-    #     env = IndexGridworldEnv(config["rows"], config["cols"])
-    #     env.seed(seed)
-
-    # elif name == "XYGridworld":
-    #     env = XYGridworldEnv(config["rows"], config["cols"])
-    #     env.seed(seed)
-
-    # elif name == "Gridworld":
-    #     env = GridworldEnv(config["rows"], config["cols"])
-    #     env.seed(seed)
-
-    # elif name == "PuddleWorld-v1":
-    #     env = PuddleWorldEnv(continuous=config["continuous"], seed=seed)
-
-    # elif name == "Acrobot-v1":
-    #     env = AcrobotEnv(seed=seed, continuous_action=config["continuous"])
-
-    # elif name == "CGW":
-    #     env = CGW.GridWorld()
-
-    # elif name == "ContinuousGridWorld":
-    #     env = ContinuousGridWorld.GridWorld()
-
-    # elif "minatar" in name.lower():
-    #     if "/" in name:
-    #         raise ValueError(f"specify environment as MinAtar{name} rather " +
-    #                          "than MinAtar/{name}")
-    #     minimal_actions = config.get("use_minimal_action_set", True)
-    #     stripped_name = name[7:].lower()  # Strip off "MinAtar"
-    #     env = MinAtar.GymEnv(
-    #         stripped_name,
-    #         use_minimal_action_set=minimal_actions,
-    #     )
-
-    # else:
-    #     # Ensure we use the base gym environment. `gym.make` returns a TimeStep
-    #     # environment wrapper, but we want the underlying environment alone.
-    #     env = gym.make(name).env
-    #     env.seed(seed)
-
-    # print(config)
-    # return env

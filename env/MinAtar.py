@@ -1,8 +1,9 @@
 from copy import deepcopy
-import gymnasium as gym
-from gymnasium import spaces
-from gymnasium.envs import register
+import gym
+from gym import spaces
+from gym.envs import register
 import numpy as np
+
 from minatar import Environment
 
 

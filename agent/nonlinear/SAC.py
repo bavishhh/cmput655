@@ -141,7 +141,6 @@ class SAC(BaseAgent):
         # Set the seed for all random number generators, this includes
         # everything used by PyTorch, including setting the initial weights
         # of networks.
-        self.seed = seed
         self._torch_rng = torch.manual_seed(seed)
         self._rng = np.random.default_rng(seed)
 

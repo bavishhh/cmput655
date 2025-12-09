@@ -2,9 +2,9 @@
 # https://github.com/openai/gym/tree/master
 
 # Import modules
-import gymnasium as gym
-from gymnasium import spaces
-from gymnasium.utils import seeding
+import gym
+from gym import spaces
+from gym.utils import seeding
 import numpy as np
 from os import path
 
@@ -153,7 +153,7 @@ class PendulumEnv(gym.Env):
             u = np.clip(u, -self.max_torque, self.max_torque)[0]
         else:
             assert self.action_space.contains(u), \
-                f"{u!r} ({type(u)}) invalid"
+                f"{action!r} ({type(action)}) invalid"
             u = (u - 1) * self.max_torque  # [-max_torque, 0, max_torque]
 
         self.last_u = u  # for rendering
@@ -221,7 +221,7 @@ class PendulumEnv(gym.Env):
             The image of the current time step
         """
         if self.viewer is None:
-            from gymnasium.envs.classic_control import rendering
+            from gym.envs.classic_control import rendering
             self.viewer = rendering.Viewer(500, 500)
             self.viewer.set_bounds(-2.2, 2.2, -2.2, 2.2)
             rod = rendering.make_capsule(1, .2)

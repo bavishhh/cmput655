@@ -24,6 +24,11 @@ def create_agent(agent, config):
     baseAgent.BaseAgent
         The agent to train
     """
+    # Random agent
+    if agent.lower() == "random":
+        from agent.Random import Random
+        return Random(config["action_space"], config["seed"])
+
     # Vanilla Actor-Critic
     if agent.lower() == "VAC".lower():
         if "activation" in config:
@@ -212,8 +217,8 @@ def create_agent(agent, config):
             betas=config["betas"], activation=activation,
             env=config["env"],
         )
-    
-    # GreedyAC + Gradient Ascent
+
+    # GreedyAC_GA
     if agent.lower() == "GreedyAC_GA".lower():
         if "activation" in config:
             activation = config["activation"]
@@ -241,8 +246,8 @@ def create_agent(agent, config):
             init=config["weight_init"],
             betas=config["betas"], activation=activation,
             env=config["env"],
-            num_grad_steps=config["num_grad_steps"],
             ga_lr=config["ga_lr"],
+            num_grad_steps=config["num_grad_steps"],
         )
 
     raise NotImplementedError("No agent " + agent)
