@@ -38,6 +38,7 @@ class GreedyAC_GA(BaseAgent):
         # Set the seed for all random number generators, this includes
         # everything used by PyTorch, including setting the initial weights
         # of networks. PyTorch prefers seeds with many non-zero binary units
+        self.seed = seed
         self.torch_rng = torch.manual_seed(seed)
         self.rng = np.random.default_rng(seed)
 
