@@ -172,7 +172,7 @@ class GreedyAC_GA(BaseAgent):
         # print(stacked_s_batch.shape, best_actions.shape)
         # print("Computing actor loss")
         policy_loss = self.policy.log_prob(stacked_next_state_batch, best_actions)
-        policy_loss = torch.clamp(policy_loss, -50, 50)
+        # policy_loss = torch.clamp(policy_loss, -50, 50)
         policy_loss = -policy_loss.mean()
 
         if log_to_wandb:
@@ -194,7 +194,7 @@ class GreedyAC_GA(BaseAgent):
         action_batch = action_batch.reshape(-1, self.action_dims)
 
         sampler_entropy = self.sampler.log_prob(stacked_next_state_batch, action_batch)
-        sampler_entropy = torch.clamp(sampler_entropy, -50, 50)
+        # sampler_entropy = torch.clamp(sampler_entropy, -50, 50)
         # with torch.no_grad():
         #     sampler_entropy *= sampler_entropy
 
@@ -209,7 +209,7 @@ class GreedyAC_GA(BaseAgent):
 
         stacked_next_state_batch = next_state_batch.repeat_interleave(samples, dim=0)
         sampler_loss = self.sampler.log_prob(stacked_next_state_batch, best_actions)
-        sampler_loss = torch.clamp(sampler_loss, -50, 50)
+        # sampler_loss = torch.clamp(sampler_loss, -50, 50)
         sampler_loss = sampler_loss.reshape(self.batch_size, samples, 1)
         sampler_loss = sampler_loss.mean(axis=1)
         sampler_loss = sampler_loss + (sampler_entropy * self.alpha)
