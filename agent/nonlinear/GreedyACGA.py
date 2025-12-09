@@ -11,6 +11,7 @@ from agent.nonlinear.policy.MLP import SquashedGaussian, Gaussian, Softmax
 import agent.nonlinear.nn_utils as nn_utils
 import inspect
 import sys
+import wandb
 
 
 class GreedyAC(BaseAgent):
@@ -22,7 +23,7 @@ class GreedyAC(BaseAgent):
                  actor_hidden_dim, critic_hidden_dim, replay_capacity, seed,
                  batch_size, rho, num_samples, betas, env, cuda=False,
                  clip_stddev=1000, init=None, entropy_from_single_sample=True,
-                 activation="relu"):
+                 activation="relu", num_grad_steps=20, ga_lr=0.001):
         super().__init__()
 
         self.batch = True
@@ -41,14 +42,18 @@ class GreedyAC(BaseAgent):
 
         self.is_training = True
         self.entropy_from_single_sample = entropy_from_single_sample
-        self.gamma = 0.99  # Discount factor
-        self.tau = 0.01  # Polyak average
-        self.alpha = 10.0  # Entropy scale
+        self.gamma = gamma  # Discount factor
+        self.tau = tau  # Polyak average
+        self.alpha = alpha  # Entropy scale
         self.gradient_ascent = True
-        self.gradient_ascent_steps = 20
+        self.gradient_ascent_steps = num_grad_steps
         self.state_dims = num_inputs
         self.discrete_action = isinstance(action_space, Discrete)
         self.action_space = action_space
+        self.ga_lr = ga_lr
+        self.critic_lr = critic_lr
+        self.actor_lr_scale = actor_lr_scale
+        self.target_update_interval = target_update_interval
 
         self.device = torch.device("cuda:0" if cuda and
                                    torch.cuda.is_available() else "cpu")
@@ -85,7 +90,7 @@ class GreedyAC(BaseAgent):
 
         self.critic = QMLP(num_inputs, action_shape, critic_hidden_dim,
                            init, activation).to(device=self.device)
-        self.critic_optim = Adam(self.critic.parameters(), lr=1e-3,
+        self.critic_optim = Adam(self.critic.parameters(), lr=self.critic_lr,
                                  betas=betas)
 
         self.critic_target = QMLP(num_inputs, action_shape,
@@ -96,7 +101,7 @@ class GreedyAC(BaseAgent):
         self._create_policies(policy, num_inputs, action_space,
                               actor_hidden_dim, clip_stddev, init, activation)
 
-        actor_lr = 1 * 1e-3
+        actor_lr = self.actor_lr_scale * self.critic_lr
         self.policy_optim = Adam(self.policy.parameters(), lr=actor_lr,
                                  betas=betas)
         self.sampler_optim = Adam(self.sampler.parameters(), lr=actor_lr,
@@ -138,19 +143,23 @@ class GreedyAC(BaseAgent):
         # Gradient ascent part
         initial_action_estimates = action_batch.clone()
         initial_action_estimates.requires_grad_(True)
-        optimizer = torch.optim.Adam([initial_action_estimates], lr=1e-2)
+        optimizer = torch.optim.Adam([initial_action_estimates], lr=self.ga_lr)
 
-        for _ in range(self.gradient_ascent_steps):
+        for i in range(self.gradient_ascent_steps):
             optimizer.zero_grad()
-            q_values = self.critic_target(stacked_next_state_batch, initial_action_estimates)
+            q_values = self.critic(stacked_next_state_batch, initial_action_estimates)
             q_values = q_values.reshape(self.batch_size, self.num_samples, 1)
             q_sum = -1 *  q_values.mean()
+            if i == 0:
+                wandb.log({'GreedyAC/Initial_Avg_Q_Value': -q_sum.item()})
             q_sum.backward()
             optimizer.step()
 
+        wandb.log({'GreedyAC/Final_Avg_Q_Value': -q_sum.item()})
+
         with torch.no_grad():
-            best_actions = initial_action_estimates
-            initial_action_estimates = torch.clamp(initial_action_estimates,
+            # best_actions = initial_action_estimates
+            best_actions = torch.clamp(initial_action_estimates.detach(),
                                                    self.action_space.low[0], self.action_space.high[0])
 
         samples = int(self.rho * self.num_samples)
@@ -160,12 +169,15 @@ class GreedyAC(BaseAgent):
         # print(stacked_s_batch.shape, best_actions.shape)
         # print("Computing actor loss")
         policy_loss = self.policy.log_prob(stacked_next_state_batch, best_actions)
-
+        policy_loss = torch.clamp(policy_loss, -50, 50)
         policy_loss = -policy_loss.mean()
+
+        wandb.log({'GreedyAC/Policy_Loss': policy_loss.item()})
 
         # Update actor
         self.policy_optim.zero_grad()
         policy_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=10.0)
         self.policy_optim.step()
 
         # Calculate sampler entropy
@@ -178,8 +190,9 @@ class GreedyAC(BaseAgent):
         action_batch = action_batch.reshape(-1, self.action_dims)
 
         sampler_entropy = self.sampler.log_prob(stacked_next_state_batch, action_batch)
-        with torch.no_grad():
-            sampler_entropy *= sampler_entropy
+        sampler_entropy = torch.clamp(sampler_entropy, -50, 50)
+        # with torch.no_grad():
+        #     sampler_entropy *= sampler_entropy
 
         sampler_entropy = sampler_entropy.reshape(self.batch_size,
                                                   self.num_samples, 1)
@@ -192,14 +205,17 @@ class GreedyAC(BaseAgent):
 
         stacked_next_state_batch = next_state_batch.repeat_interleave(samples, dim=0)
         sampler_loss = self.sampler.log_prob(stacked_next_state_batch, best_actions)
+        sampler_loss = torch.clamp(sampler_loss, -50, 50)
         sampler_loss = sampler_loss.reshape(self.batch_size, samples, 1)
         sampler_loss = sampler_loss.mean(axis=1)
         sampler_loss = sampler_loss + (sampler_entropy * self.alpha)
         sampler_loss = -sampler_loss.mean()
+        wandb.log({'GreedyAC/Sampler_Loss': sampler_loss.item()})
 
         # Update the sampler
         self.sampler_optim.zero_grad()
         sampler_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.sampler.parameters(), max_norm=10.0)
         self.sampler_optim.step()
 
         # next_state_action, _, _ = self.policy.sample(next_state_batch)
@@ -212,6 +228,7 @@ class GreedyAC(BaseAgent):
         # Calculate the loss on the critic
         # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
         q_loss = F.mse_loss(target_q_value, q_value)
+        wandb.log({'GreedyAC/Critic_Loss': q_loss.item()})
 
         # Update the critic
         self.critic_optim.zero_grad()

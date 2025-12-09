@@ -3,6 +3,7 @@ from datetime import datetime
 from copy import deepcopy
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
+import wandb
 
 class Experiment:
     """
@@ -119,6 +120,14 @@ class Experiment:
             self.writer.add_scalar('Train/Episode_Steps', ep_steps, self.train_episodes)
             self.writer.add_scalar('Train/Episode_Time', train_time, self.train_episodes)
             self.writer.add_scalar('Train/Timesteps_Elapsed', self.timesteps_elapsed, self.train_episodes)
+
+            wandb.log({
+                'Train/Episode_Return': ep_reward,
+                'Train/Episode_Steps': ep_steps,
+                'Train/Episode_Time': train_time,
+                'Train/Timesteps_Elapsed': self.timesteps_elapsed,
+                'Train/step': self.train_episodes
+            })
 
         # Evaluate once at the end
         self.eval_time += self.eval()
@@ -264,6 +273,12 @@ class Experiment:
                   time.strftime("%H:%M:%S", time.gmtime(eval_elapsed_time)))
             self.writer.add_scalar('Eval/Episode_Return', episode_reward, self.train_episodes)
             self.writer.add_scalar('Eval/Num_Steps', num_steps, self.train_episodes)
+
+            wandb.log({
+                'Eval/Episode_Return': episode_reward,
+                'Eval/Num_Steps': num_steps,
+                'Eval/step': self.train_episodes
+            })
 
         # Save evaluation data
         self.eval_ep_return.append(temp_rewards_per_episode)

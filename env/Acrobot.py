@@ -5,8 +5,8 @@
 import numpy as np
 from numpy import sin, cos, pi
 
-from gym import spaces
-import gym
+from gymnasium import spaces
+import gymnasium as gym
 
 
 class AcrobotEnv(gym.Env):
