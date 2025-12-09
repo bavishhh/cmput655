@@ -212,6 +212,38 @@ def create_agent(agent, config):
             betas=config["betas"], activation=activation,
             env=config["env"],
         )
+    
+    # GreedyAC + Gradient Ascent
+    if agent.lower() == "GreedyAC_GA".lower():
+        if "activation" in config:
+            activation = config["activation"]
+        else:
+            activation = "relu"
+
+        from agent.nonlinear.GreedyAC_GA import GreedyAC_GA
+        return GreedyAC_GA(
+            num_inputs=config["feature_size"],
+            action_space=config["action_space"],
+            gamma=config["gamma"],
+            tau=config["tau"],
+            alpha=config["alpha"],
+            policy=config["policy_type"],
+            target_update_interval=config["target_update_interval"],
+            critic_lr=config["critic_lr"],
+            actor_lr_scale=config["actor_lr_scale"],
+            actor_hidden_dim=config["hidden_dim"],
+            critic_hidden_dim=config["hidden_dim"],
+            replay_capacity=config["replay_capacity"],
+            seed=config["seed"],
+            batch_size=config["batch_size"],
+            cuda=config["cuda"],
+            clip_stddev=config["clip_stddev"],
+            init=config["weight_init"],
+            betas=config["betas"], activation=activation,
+            env=config["env"],
+            num_grad_steps=config["num_grad_steps"],
+            ga_lr=config["ga_lr"],
+        )
 
     raise NotImplementedError("No agent " + agent)
 
