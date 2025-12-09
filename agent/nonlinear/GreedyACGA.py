@@ -131,17 +131,17 @@ class GreedyAC(BaseAgent):
 
         # Sample actions from the sampler to determine which to update
         # with. I have changed to 1, so shape will be [batch,1,action_dim]
-        action_batch, _, _, = self.sampler.sample(state_batch,
+        sampler_action_batch, _, _, = self.sampler.sample(state_batch,
                                                   self.num_samples)
         # action_batch = action_batch.permute(1, 0, 2)
-        action_batch = action_batch.reshape(self.batch_size * self.num_samples,
+        sampler_action_batch = sampler_action_batch.reshape(self.batch_size * self.num_samples,
                                             self.action_dims)
         stacked_s_batch = state_batch.repeat_interleave(self.num_samples,
                                                         dim=0)
         stacked_next_state_batch = next_state_batch.repeat_interleave(self.num_samples,
                                                                 dim=0)
         # Gradient ascent part
-        initial_action_estimates = action_batch.clone()
+        initial_action_estimates = sampler_action_batch.clone()
         initial_action_estimates.requires_grad_(True)
         optimizer = torch.optim.Adam([initial_action_estimates], lr=self.ga_lr)
 
