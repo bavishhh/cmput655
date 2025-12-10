@@ -250,6 +250,71 @@ def create_agent(agent, config):
             num_grad_steps=config["num_grad_steps"],
         )
 
+    # GreedyAC_QRC
+    if agent.lower() == "GreedyAC_QRC".lower():
+        if "activation" in config:
+            activation = config["activation"]
+        else:
+            activation = "relu"
+
+        from agent.nonlinear.GreedyAC_QRC import GreedyAC_QRC
+        return GreedyAC_QRC(
+            num_inputs=config["feature_size"],
+            action_space=config["action_space"],
+            gamma=config["gamma"],
+            tau=config["tau"],
+            alpha=config["alpha"],
+            policy=config["policy_type"],
+            target_update_interval=config["target_update_interval"],
+            critic_lr=config["critic_lr"],
+            actor_lr_scale=config["actor_lr_scale"],
+            actor_hidden_dim=config["hidden_dim"],
+            critic_hidden_dim=config["hidden_dim"],
+            replay_capacity=config["replay_capacity"],
+            seed=config["seed"],
+            batch_size=config["batch_size"],
+            cuda=config["cuda"],
+            clip_stddev=config["clip_stddev"],
+            init=config["weight_init"],
+            betas=config["betas"], activation=activation,
+            env=config["env"],
+            qrc_beta=config["qrc_beta"],
+            rho=config["n_rho"][1],
+            num_samples=config["n_rho"][0]
+        )
+    
+    if agent.lower() == "GARE".lower():
+        if "activation" in config:
+            activation = config["activation"]
+        else:
+            activation = "relu"
+
+        from agent.nonlinear.GARE import GARE
+        return GARE(
+            num_inputs=config["feature_size"],
+            action_space=config["action_space"],
+            gamma=config["gamma"],
+            tau=config["tau"],
+            alpha=config["alpha"],
+            policy=config["policy_type"],
+            target_update_interval=config["target_update_interval"],
+            critic_lr=config["critic_lr"],
+            actor_lr_scale=config["actor_lr_scale"],
+            actor_hidden_dim=config["hidden_dim"],
+            critic_hidden_dim=config["hidden_dim"],
+            replay_capacity=config["replay_capacity"],
+            seed=config["seed"],
+            batch_size=config["batch_size"],
+            cuda=config["cuda"],
+            clip_stddev=config["clip_stddev"],
+            init=config["weight_init"],
+            betas=config["betas"], activation=activation,
+            env=config["env"],
+            ga_lr=config["ga_lr"],
+            num_grad_steps=config["num_grad_steps"],
+            qrc_beta=config["qrc_beta"]
+        )
+    
     raise NotImplementedError("No agent " + agent)
 
 

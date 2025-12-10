@@ -112,6 +112,8 @@ class GreedyAC_QRC(BaseAgent):
         # A. Sample N candidates per next_state
         # next_action_batch shape: (Batch, N, ActionDim)
         next_action_batch, _, _, = self.sampler.sample(next_state_batch, self.num_samples)
+        # FIX: Permute to (Batch, Num_Samples, Dim) -> (32, 30, Dim)
+        next_action_batch = next_action_batch.permute(1, 0, 2)
 
         # B. Evaluate candidates using Target Critic
         # We use Target Critic for selection to ensure stability in the target calculation
@@ -127,7 +129,8 @@ class GreedyAC_QRC(BaseAgent):
         target_q_values = target_q_values.reshape(self.batch_size, self.num_samples)
         
         # Sort descending
-        sorted_q, sorted_indices = torch.argsort(target_q_values, dim=1, descending=True)
+        sorted_indices = torch.argsort(target_q_values, dim=1, descending=True)
+        sorted_q = torch.gather(target_q_values, 1, sorted_indices)
 
         # D. Extract Key Values for Updates
         
