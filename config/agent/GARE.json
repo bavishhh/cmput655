@@ -5,18 +5,18 @@
         "replay_capacity": [100000],
         "batch_size": [32],
         "tau": [0.01],
-		"alpha": [0.001, 0.01, 0.1, 1.0, 10.0],
+		"alpha": [1e-3],
 		"betas": [[0.9, 0.999]],
         "policy_type": ["Gaussian"],
         "target_update_interval": [1],
-        "critic_lr": [1e-1, 1e-2, 1e-3, 1e-4],
-        "actor_lr_scale": [1e-2, 1e-1, 1.0],
+        "critic_lr": [1e-3],
+        "actor_lr_scale": [1.0],
         "hidden_dim": [64],
         "weight_init": ["xavier_uniform"],
         "clip_stddev": [1000],
 		"cuda": [true],
         "ga_lr": [0.001, 0.01, 0.1],
-        "num_grad_steps": [10, 20, 100],
+        "num_grad_steps": [10, 20, 50, 100],
         "qrc_beta": [0.0, 0.5, 1.0, 1.5]
     }
 }

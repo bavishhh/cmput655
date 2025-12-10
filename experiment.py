@@ -97,7 +97,7 @@ class Experiment:
             self.train_ep_steps.append(ep_steps)
             self.train_time += train_time
             print(f"=== Train ep: {i}, r: {ep_reward}, n_steps: {ep_steps}, " +
-                  f"elapsed: {train_time}")
+                  f"elapsed: {train_time}", flush=True)
             i += 1
 
         # Evaluate once at the end
@@ -108,7 +108,7 @@ class Experiment:
         print(f"End run at time {datetime.now()}")
         print(f"Total time taken: {end_run - start_run}")
         print(f"Training time: {self.train_time}")
-        print(f"Evaluation time: {self.eval_time}")
+        print(f"Evaluation time: {self.eval_time}", flush=True)
 
         self.info["eval_episode_rewards"] = np.array(self.eval_ep_return)
         self.info["eval_episode_steps"] = np.array(self.eval_ep_steps)
@@ -241,7 +241,7 @@ class Experiment:
             print("=== EVAL ep: " + str(i) + ", r: " +
                   str(episode_reward) + ", n_steps: " + str(num_steps) +
                   ", elapsed: " +
-                  time.strftime("%H:%M:%S", time.gmtime(eval_elapsed_time)))
+                  time.strftime("%H:%M:%S", time.gmtime(eval_elapsed_time)), flush=True)
 
         # Save evaluation data
         self.eval_ep_return.append(temp_rewards_per_episode)
