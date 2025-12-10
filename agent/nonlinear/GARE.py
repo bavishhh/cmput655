@@ -22,7 +22,7 @@ class GARE(BaseAgent):
                  batch_size, betas, env, cuda=False,
                  clip_stddev=1000, init=None, entropy_from_single_sample=True,
                  activation="relu", qrc_beta=1.0, 
-                 ga_lr=0.01, gradient_ascent_steps=5): # Added GA params
+                 ga_lr=0.01, num_grad_steps=5): # Added GA params
         super().__init__()
 
         self.batch = True
@@ -41,7 +41,7 @@ class GARE(BaseAgent):
         self.qrc_beta = qrc_beta
         # Gradient Ascent Parameters
         self.ga_lr = ga_lr
-        self.gradient_ascent_steps = gradient_ascent_steps
+        self.gradient_ascent_steps = num_grad_steps
         
         self.state_dims = num_inputs
         self.discrete_action = isinstance(action_space, Discrete)
@@ -239,10 +239,21 @@ class GARE(BaseAgent):
         
         # Select top rho * N
         rho_k = int(self.rho * self.num_samples)
-        top_ind = sorted_ind[:, :rho_k].repeat_interleave(self.action_dims, -1)
         
-        # Gather the top actions from the ALREADY refined batch
-        top_actions = torch.gather(best_next_actions, 1, top_ind)
+        # 1. Get the 2D indices (Batch, rho_k)
+        top_ind_base = sorted_ind[:, :rho_k]
+        
+        # 2. Unsqueeze to add the missing dimension -> (Batch, rho_k, 1)
+        top_ind_3d = top_ind_base.unsqueeze(-1)
+        
+        # 3. Expand to match ActionDim -> (Batch, rho_k, ActionDim)
+        top_ind_3d = top_ind_3d.expand(-1, -1, self.action_dims)
+        
+        # 4. Now gather works because both are 3D
+        # best_next_actions: (Batch, N, ActionDim)
+        # top_ind_3d:        (Batch, rho_k, ActionDim)
+        top_actions = torch.gather(best_next_actions, 1, top_ind_3d)
+        
         top_actions_flat = top_actions.reshape(-1, self.action_dims)
         
         # Expand next_state_batch for the subset (since we are using next_states)
